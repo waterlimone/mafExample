@@ -104,11 +104,17 @@ def severe_mutation_enrichment(deduplicated):
     print("Lines after enrichment: " + str(deduplicated.shape[0]))
     return deduplicated
 
+# Finds the most mutated genes counted only once per patient
 def most_mutated_genes(enriched):
     gene_dict = {}
 
-    mutated_genes = list(set(enriched.Hugo_Symbol.values.tolist()))
+    # Gets list of mutated genes and removes duplicates with set() and converts back to list
+    mutated_genes = list(set(enriched.Hugo_Symbol.values.tolist())) 
     
+    # For each gene pull the Tumor_Sample_Barcodes associated with that gene and slice for patient number,
+    # then use set() to remove patient duplicates for that gene,
+    # Finally add gene to gene_dict with the length of the patients_with_gene being the number of times this 
+    # gene was seen. 
     for gene in mutated_genes:
         patients_with_gene = enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()
         patients_with_gene = list(set(
@@ -116,6 +122,7 @@ def most_mutated_genes(enriched):
         
         gene_dict[gene] = len(patients_with_gene)
     
+    # Sort the dictionary in descending order and take a slice of the first 5 values and convert back to a dict
     gene_dict = sorted(gene_dict.items(), key=lambda item: item[1], reverse=True)
     gene_dict = dict(gene_dict[0:5])
    
@@ -126,6 +133,3 @@ if(__name__ == "__main__"):
     deduplicated = deduplicate()
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
-
-    
-
