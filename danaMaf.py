@@ -1,3 +1,10 @@
+##################################################################################################
+# Author:  Cameron McIlvenna                                                                     #
+# Date:    3/29/23                                                                               #
+# Purpose: To read in and analyse pubicly available .maf file to determine statistical           #
+#          significance between patients with KRAS gene and patients without it.                 #
+##################################################################################################
+
 from os import listdir, system
 import subprocess
 from shutil import rmtree
