@@ -3,9 +3,11 @@ import subprocess
 from shutil import rmtree
 from time import sleep
 import pandas as pd
+import numpy as np
 import re
 import matplotlib.pyplot as plt
-from sksurv.nonparametric import kaplan_meier_estimator
+from lifelines import KaplanMeierFitter
+from lifelines.statistics import logrank_test
 
 
 # Merges all valid maf files into the first maf file
@@ -103,7 +105,7 @@ def severe_mutation_enrichment(deduplicated):
 
     # Filters pandas dataframe from poly_enriched or SIFT_enriched
     deduplicated = deduplicated[(deduplicated.PolyPhen.isin(poly_enriched))|(deduplicated.SIFT.isin(SIFT_enriched))]
-    print("Lines after enrichment: " + str(deduplicated.shape[0]))
+    print("Lines after Enrichment: " + str(deduplicated.shape[0]))
     return deduplicated
 
 # Finds the most mutated genes counted only once per patient
@@ -118,8 +120,8 @@ def most_mutated_genes(enriched):
     # Finally add gene to gene_dict with the length of the patients_with_gene being the number of times this 
     # gene was seen. 
     for gene in mutated_genes:
-        patients_with_gene = list(set(enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()))
-        patients_with_gene = [patients[8:12] for patients in patients_with_gene]
+        patients_with_gene = enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()
+        patients_with_gene = list(set([patients[8:12] for patients in patients_with_gene]))
         
         gene_dict[gene] = len(patients_with_gene)
     
@@ -130,43 +132,58 @@ def most_mutated_genes(enriched):
     print("Top 5 Most Mutated Genes: " + str(gene_dict))
 
 def analysis(enriched):
+    # Read in CDR File
     cdr = pd.read_csv("TCGA-CDR-SupplementalTableS1.xlsx - TCGA-CDR.tsv", sep="\t")
-    cdr["PFI_Bool"] = True
-    cdr.loc[cdr["PFI"] == 1.0, "PFI_Bool"] = False
-    print(cdr["PFI"])
-    print(cdr["PFI_Bool"])
+    cdr["PFI_Bool"] = True # Make new column and set every value to true
 
-    patient_codes = cdr.bcr_patient_barcode.values.tolist()
-    enriched = pd.DataFrame(enriched)
+    # If PFI value is 1.0 meaning cancer came back, set the corresponding bool to False to signify lower survival
+    cdr.loc[cdr["PFI"] == 1.0, "PFI_Bool"] = False 
+    
+    # Gets patient barcodes as a list
+    patient_codes = cdr.bcr_patient_barcode.values.tolist() 
 
-    before_missing_patient_removal = enriched.shape[0]
-    enriched = enriched[enriched.Tumor_Sample_Barcode.str.contains("|".join(patient_codes), regex=True)]
-    patients_missing = before_missing_patient_removal - enriched.shape[0]
+    # Fixes issue with dataframe not having linting (It will still work but features like autocomplete will not)
+    enriched = pd.DataFrame(enriched) 
+
+    before_missing_patient_removal = enriched.shape[0] # Number of patients before removal of patients not in the cdr from the enriched set
+    enriched = enriched[enriched.Tumor_Sample_Barcode.str.contains("|".join(patient_codes), regex=True)] # Filters out patients not in the cdr from enriched set
+    patients_missing = before_missing_patient_removal - enriched.shape[0] # Get the number of patients missing from cdr file
     print("Patients Missing From CDR: " + str(patients_missing))
 
+    # Filters enriched for only patients with KRAS then string slices the code to match up with cdr
     patients_with_KRAS = list(set(enriched.loc[enriched["Hugo_Symbol"] == "KRAS"]["Tumor_Sample_Barcode"].values.tolist()))
     patients_with_KRAS = [patients[0:12] for patients in patients_with_KRAS]
+
+     # Filters enriched for only patients without KRAS then string slices the code to match up with cdr
     patients_withouth_KRAS = list(set(enriched.loc[enriched["Hugo_Symbol"] != "KRAS"]["Tumor_Sample_Barcode"].values.tolist()))
     patients_withouth_KRAS = [patients[0:12] for patients in patients_withouth_KRAS]
 
-
+    # Filters the cdr using the patients with and without KRAS for analysis
     cdr_with_KRAS = cdr[cdr.bcr_patient_barcode.isin(patients_with_KRAS)]
     cdr_without_KRAS = cdr[cdr.bcr_patient_barcode.isin(patients_withouth_KRAS)]
 
-    time_with, survival_prob_with = kaplan_meier_estimator(cdr_with_KRAS["PFI_Bool"], cdr_with_KRAS["PFI.time"])
-    time_without, survival_prob_without = kaplan_meier_estimator(cdr_without_KRAS["PFI_Bool"], cdr_without_KRAS["PFI.time"])
+    # Runs Kaplan Meier Estimator for with and without KRAS sets
+    kmf_w = KaplanMeierFitter()
+    kmf_wo = KaplanMeierFitter()
+    kmf_w.fit(durations = cdr_with_KRAS["PFI.time"], event_observed = cdr_with_KRAS["PFI_Bool"], label = "With KRAS")
+    kmf_wo.fit(durations = cdr_without_KRAS["PFI.time"], event_observed = cdr_without_KRAS["PFI_Bool"], label = "Without KRAS")
 
+    # Runs logrank test
+    logrank_test(cdr_with_KRAS["PFI.time"], cdr_without_KRAS["PFI.time"], 
+                 event_observed_A=cdr_with_KRAS["PFI_Bool"], event_observed_B=cdr_without_KRAS["PFI_Bool"]).print_summary()
 
-    plt.step(time_with, survival_prob_with, where="post", label="With KRAS")
-    plt.step(time_without, survival_prob_without, where="post", label="Without KRAS")
-    plt.ylabel("Probability of Survival $\hat{S}(t)$")
-    plt.xlabel("time $t$")
-    plt.legend(loc="best")
-    plt.show()
+    # Plots the Kaplan Meier Curve
+    kmf_w.plot()
+    kmf_wo.plot()
+    plt.xlabel("Days Since Cancer Diagnosis")
+    plt.ylabel("Probability of Survival")
+    plt.title("Survival Probabilities for Patients With and Without KRAS")
+    plt.savefig("kaplanMeier", dpi=600)
+    print("Saved Figure")
     
 
 if(__name__ == "__main__"):
-    # remove_non_general()
+    remove_non_general()
     deduplicated = deduplicate()    
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
