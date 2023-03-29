@@ -4,6 +4,8 @@ from shutil import rmtree
 from time import sleep
 import pandas as pd
 import re
+import matplotlib.pyplot as plt
+from sksurv.nonparametric import kaplan_meier_estimator
 
 
 # Merges all valid maf files into the first maf file
@@ -21,7 +23,7 @@ def remove_non_general():
     mafs = listdir("mafs")
     system("touch merged.maf")
     removed_files = 0
-    is_first_maf = True  # Used to know if this is the first accepted maf so that the header is kept int he merged maf
+    is_first_maf = True  # Used to know if this is the first accepted maf so that the header is kept in the merged maf
 
     for maf in mafs:
         annotation_path = "mafs/" + maf + "/annotations.txt"
@@ -57,7 +59,7 @@ def remove_non_general():
 
 # Deduplicating tumor barcodes for patients that have more than one
 def deduplicate():
-    merged = pd.read_csv("merged.maf", sep="\t")
+    merged = pd.read_csv("merged.maf", sep="\t", dtype="string")
     tumor_barcodes = merged.Tumor_Sample_Barcode.values.tolist()
     patients = []
 
@@ -116,9 +118,8 @@ def most_mutated_genes(enriched):
     # Finally add gene to gene_dict with the length of the patients_with_gene being the number of times this 
     # gene was seen. 
     for gene in mutated_genes:
-        patients_with_gene = enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()
-        patients_with_gene = list(set(
-            [patients[8:12] for patients in patients_with_gene]))
+        patients_with_gene = list(set(enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()))
+        patients_with_gene = [patients[8:12] for patients in patients_with_gene]
         
         gene_dict[gene] = len(patients_with_gene)
     
@@ -126,10 +127,47 @@ def most_mutated_genes(enriched):
     gene_dict = sorted(gene_dict.items(), key=lambda item: item[1], reverse=True)
     gene_dict = dict(gene_dict[0:5])
    
-    print(gene_dict)
+    print("Top 5 Most Mutated Genes: " + str(gene_dict))
+
+def analysis(enriched):
+    cdr = pd.read_csv("TCGA-CDR-SupplementalTableS1.xlsx - TCGA-CDR.tsv", sep="\t")
+    cdr["PFI_Bool"] = True
+    cdr.loc[cdr["PFI"] == 1.0, "PFI_Bool"] = False
+    print(cdr["PFI"])
+    print(cdr["PFI_Bool"])
+
+    patient_codes = cdr.bcr_patient_barcode.values.tolist()
+    enriched = pd.DataFrame(enriched)
+
+    before_missing_patient_removal = enriched.shape[0]
+    enriched = enriched[enriched.Tumor_Sample_Barcode.str.contains("|".join(patient_codes), regex=True)]
+    patients_missing = before_missing_patient_removal - enriched.shape[0]
+    print("Patients Missing From CDR: " + str(patients_missing))
+
+    patients_with_KRAS = list(set(enriched.loc[enriched["Hugo_Symbol"] == "KRAS"]["Tumor_Sample_Barcode"].values.tolist()))
+    patients_with_KRAS = [patients[0:12] for patients in patients_with_KRAS]
+    patients_withouth_KRAS = list(set(enriched.loc[enriched["Hugo_Symbol"] != "KRAS"]["Tumor_Sample_Barcode"].values.tolist()))
+    patients_withouth_KRAS = [patients[0:12] for patients in patients_withouth_KRAS]
+
+
+    cdr_with_KRAS = cdr[cdr.bcr_patient_barcode.isin(patients_with_KRAS)]
+    cdr_without_KRAS = cdr[cdr.bcr_patient_barcode.isin(patients_withouth_KRAS)]
+
+    time_with, survival_prob_with = kaplan_meier_estimator(cdr_with_KRAS["PFI_Bool"], cdr_with_KRAS["PFI.time"])
+    time_without, survival_prob_without = kaplan_meier_estimator(cdr_without_KRAS["PFI_Bool"], cdr_without_KRAS["PFI.time"])
+
+
+    plt.step(time_with, survival_prob_with, where="post", label="With KRAS")
+    plt.step(time_without, survival_prob_without, where="post", label="Without KRAS")
+    plt.ylabel("Probability of Survival $\hat{S}(t)$")
+    plt.xlabel("time $t$")
+    plt.legend(loc="best")
+    plt.show()
+    
 
 if(__name__ == "__main__"):
-    remove_non_general()
-    deduplicated = deduplicate()
+    # remove_non_general()
+    deduplicated = deduplicate()    
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
+    analysis(enriched)
