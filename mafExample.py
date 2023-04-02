@@ -15,6 +15,7 @@ import re
 import matplotlib.pyplot as plt
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
+import time
 
 
 # Merges all valid maf files into the first maf file
@@ -117,26 +118,10 @@ def severe_mutation_enrichment(deduplicated):
 
 # Finds the most mutated genes counted only once per patient
 def most_mutated_genes(enriched):
-    gene_dict = {}
-
-    # Gets list of mutated genes and removes duplicates with set() and converts back to list
-    mutated_genes = list(set(enriched.Hugo_Symbol.values.tolist())) 
+    enriched = pd.DataFrame(enriched)
     
-    # For each gene pull the Tumor_Sample_Barcodes associated with that gene and slice for patient number,
-    # then use set() to remove patient duplicates for that gene,
-    # Finally add gene to gene_dict with the length of the patients_with_gene being the number of times this 
-    # gene was seen. 
-    for gene in mutated_genes:
-        patients_with_gene = enriched.loc[enriched["Hugo_Symbol"] == gene]["Tumor_Sample_Barcode"].values.tolist()
-        patients_with_gene = list(set([patients[8:12] for patients in patients_with_gene]))
-        
-        gene_dict[gene] = len(patients_with_gene)
-    
-    # Sort the dictionary in descending order and take a slice of the first 5 values and convert back to a dict
-    gene_dict = sorted(gene_dict.items(), key=lambda item: item[1], reverse=True)
-    gene_dict = dict(gene_dict[0:5])
-   
-    print("Top 5 Most Mutated Genes: " + str(gene_dict))
+    # Switched to groupby() for performance gains. 5 hundreths of a CPU second from 155!
+    print(enriched.groupby("Hugo_Symbol", group_keys=False)["Tumor_Sample_Barcode"].nunique().sort_values(ascending=False)[0:5])
 
 def analysis(enriched):
     # Read in CDR File
@@ -190,8 +175,12 @@ def analysis(enriched):
     
 
 if(__name__ == "__main__"):
+    st2 = time.time()
+    st = time.process_time()
     remove_non_general()
     deduplicated = deduplicate()    
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
     analysis(enriched)
+    print(time.process_time() - st)
+    print(time.time() - st2)
