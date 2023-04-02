@@ -182,5 +182,5 @@ if(__name__ == "__main__"):
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
     analysis(enriched)
-    print(time.process_time() - st)
-    print(time.time() - st2)
+    print("CPU time:", time.process_time() - st)
+    print("Actual time:", time.time() - st2)
