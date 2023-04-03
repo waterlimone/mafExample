@@ -76,7 +76,7 @@ def deduplicate():
     # Reads patient numbers from tumor barcodes
     for barcode in tumor_barcodes:
         patients.append(barcode[8:12])
-    
+
     # set() used to rid duplicates and list() to convert set back to a list
     patients = list(set(patients))
 
@@ -95,6 +95,34 @@ def deduplicate():
         if(len(patient_dupes) > 1):
             patient_dupes = patient_dupes[0:-1]
             merged = merged[~merged.Tumor_Sample_Barcode.isin(patient_dupes)] # Merged where patient_dupes is not in merged
+
+    print("Lines after Deduplication: " + str(merged.shape[0]))
+    return merged
+
+def dedup():
+    merged = pd.read_csv("merged.maf", sep="\t", dtype="string")
+    tumor_barcodes = merged.Tumor_Sample_Barcode.values.tolist()
+    # Reads patient numbers from tumor barcodes
+    patients = merged["Tumor_Sample_Barcode"].str[8:12].tolist()
+
+
+    # set() used to rid duplicates and list() to convert set back to a list
+    patients = list(set(patients))
+
+    kept_codes = []
+    # For each patient find and remove duplicates with the exception of the last item
+    for patient in patients:
+        r = re.compile("[A-Z]{4}-.{2}-" + patient, re.IGNORECASE)
+
+        # Filter tumor_barcodes by patient number using regex and remove duplicates with set(),
+        # then convert back to list
+        patient_dupes = list(set(list(
+                filter(r.match, tumor_barcodes))))
+        patient_dupes.sort() # Sort duplicates by alphabetical order
+        kept_codes.append(patient_dupes[-1])
+
+    kept_codes = "|".join(kept_codes)
+    merged = merged[merged["Tumor_Sample_Barcode"].str.match(kept_codes)]
 
     print("Lines after Deduplication: " + str(merged.shape[0]))
     return merged
@@ -178,7 +206,8 @@ if(__name__ == "__main__"):
     st2 = time.time()
     st = time.process_time()
     remove_non_general()
-    deduplicated = deduplicate()    
+    # deduplicated = deduplicate()    
+    deduplicated = dedup()
     enriched = severe_mutation_enrichment(deduplicated)
     most_mutated_genes(enriched)
     analysis(enriched)
