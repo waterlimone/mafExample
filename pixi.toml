@@ -1,0 +1,14 @@
+[workspace]
+channels = ["conda-forge"]
+name = "mafExample"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+matplotlib = ">=3.10.8,<4"
+time = ">=1.9,<2"
+lifelines = ">=0.30.0,<0.31"
+polars = ">=1.38.1,<2"
+python = ">=3.14.3,<3.15"

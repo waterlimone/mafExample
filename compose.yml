@@ -1,0 +1,21 @@
+# Version 1.0
+services:
+  Jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    restart: unless-stopped
+    volumes:
+      - jenkins_data:/var/jenkins_home:rw
+    ports:
+      - "8080:8080"   # Web UI
+      - "50000:50000" # Connection to Docker
+    environment:
+      - JENKINS_EXT_URL=http://localhost:8080
+volumes:
+  jenkins_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /run/media/cam/MushiVille/jenkins_home
+  

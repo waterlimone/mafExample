@@ -1,0 +1,9 @@
+mafs/
+mafs/*
+TCGA-CDR-SupplementalTableS1.xlsx - TCGA-CDR.tsv
+.gitignore# pixi environments
+.pixi/*
+!.pixi/config.toml
+mafs.zip
+__pycache__/
+*.parquet
